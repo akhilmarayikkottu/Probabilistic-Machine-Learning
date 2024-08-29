@@ -24,7 +24,7 @@ plt.rcParams.update({
 
 # Suppose we have multiple polynimial models order 1 to 5. We assume that a Gaussian noisy data is generated from the cubic model $( y = 2+3x+6x^2+5x^3)$ for $x \in [x_{lo},x_{hi}]$ with a gaussian noise of standard deviation $\beta$ and mean zero as shown below
 
-beta = 0.5
+beta = 1
 x_lo = -1; x_hi = 1
 Np   = 100
 alpha = 1
@@ -33,14 +33,14 @@ alpha = 1
 x_cont = np.linspace(-1,1,100)
 
 _Poly = functions.poly
-true_generator = _Poly.Cubic(x_cont,2,3,6,5)
+true_generator = _Poly.Cubic(x_cont,2,3,.6,5)
 
 
 noisy_data = []; x_obs=[]
 for i in range (0,Np):
     x = random.uniform(x_lo,x_hi)
     x_obs.append(x)
-    y = _Poly.Cubic(x,2,3,6,5)+random.gauss(0,beta)
+    y = _Poly.Cubic(x,2,3,.6,5)+random.gauss(0,beta)
     noisy_data.append(y)
 
 noisy_data = np.array(noisy_data)
