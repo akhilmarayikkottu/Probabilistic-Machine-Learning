@@ -18,3 +18,8 @@ def noisy_obs(x_lo, x_hi, Np, sigma):
         x_list.append(x)
         t_list.append(t)
     return(np.array(x_list), np.array(t_list))
+
+def UniGaussian(mu,std, array):
+    t1  = (2*np.pi*std**2)**-0.5
+    t2  = (array-mu)**2/(2*std**2)
+    return(t1*np.exp(-t2))
