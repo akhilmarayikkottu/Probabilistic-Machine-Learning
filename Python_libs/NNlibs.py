@@ -349,4 +349,92 @@ class DeepONet(torch.nn.Module):
         output = torch.sum(branch_output*trunk_output,dim=-1, keepdim=True)
         return(output)
 
+class Loss(nn.Module):
+	def cvae_loss(recon_x, x, mu, logvar):
+		# Reconstruction loss (BCE or MSE)
+		recon_loss = F.mse_loss(recon_x, x, reduction='sum')  # Use BCE if inputs are normalized
+		# KL divergence loss
+		kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+		return recon_loss + kl_loss
+
+
+
+class CVAE(nn.Module):
+    def __init__(self, input_channels=1, latent_dim=16, 
+	hidden_channels=[32, 64, 128], input_size=32,
+	kernel_size:int = 3, stride:int = 2, padding:int = 1,
+	BatchNormalization:bool = False, 
+	activation:Optional[Any]=nn.ELU()):
+
+        super(CVAE, self).__init__()
+        self.latent_dim = latent_dim
+        self.hidden_channels = hidden_channels.copy()
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.activation = activation
+        self.BatchNorm = BatchNormalization
+
+        # Encoder
+        layers = []
+        in_channels = input_channels
+        for out_channels in hidden_channels:
+            layers.append(nn.Conv2d(in_channels, out_channels,kernel_size=self.kernel_size, stride=self.stride, padding=self.padding))
+            if(self.BatchNorm): layers.append(nn.BatchNorm2d(out_channels)) 
+            layers.append(self.activation)
+            in_channels = out_channels
+        
+        self.encoder = nn.Sequential(*layers)
+        
+        # Compute output size for FC layers dynamically
+        with torch.no_grad():
+            dummy_input = torch.randn(1, input_channels, input_size, input_size)
+            dummy_output = self.encoder(dummy_input)
+            self.fc_input_dim = dummy_output.view(1, -1).size(1)
+            self.feature_map_shape = dummy_output.shape[1:]  # Store (C, H, W) for reshaping
+        
+        # Latent space
+        self.fc_mu = nn.Linear(self.fc_input_dim, latent_dim)
+        self.fc_logvar = nn.Linear(self.fc_input_dim, latent_dim)
+        self.fc_decode = nn.Linear(latent_dim, self.fc_input_dim)
+        
+        # Decoder
+        hidden_channels.reverse()
+        layers = []
+        in_channels = hidden_channels[0]
+        for out_channels in hidden_channels[1:]:
+            layers.append(nn.ConvTranspose2d(in_channels, out_channels, kernel_size=self.kernel_size, stride=self.stride, padding=self.padding, output_padding=self.padding))
+            if(self.BatchNorm): layers.append(nn.BatchNorm2d(out_channels))  # Adding BatchNorm
+            layers.append(self.activation)
+            in_channels = out_channels
+        
+        layers.append(nn.ConvTranspose2d(in_channels, input_channels, kernel_size=self.kernel_size, stride=self.stride, padding=self.padding, output_padding=self.padding))
+        layers.append(nn.Sigmoid())
+        
+        self.decoder = nn.Sequential(*layers)
     
+    def encode(self, x):
+        x = self.encoder(x)
+        x = x.view(x.size(0), -1)
+        mu, logvar = self.fc_mu(x), self.fc_logvar(x)
+        return mu, logvar
+    
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
+    
+    def decode(self, z):
+        x = self.fc_decode(z)
+        x = x.view(x.size(0), *self.feature_map_shape)  # Use stored feature map shape
+        x = self.decoder(x)
+        return x
+    
+    def forward(self, x):
+        mu, logvar = self.encode(x)
+        z = self.reparameterize(mu, logvar)
+        recon_x = self.decode(z)
+        return recon_x, mu, logvar
+
+
+
